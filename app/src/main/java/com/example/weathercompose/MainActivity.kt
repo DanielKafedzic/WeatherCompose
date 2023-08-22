@@ -1,26 +1,28 @@
 package com.example.weathercompose
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.content.DialogInterface
 import android.os.Bundle
-import android.os.Looper
+import android.view.View
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.weathercompose.api.NetworkClient
 import com.google.android.gms.location.*
+import com.google.android.gms.location.R
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.example.weathercompose.api.NetworkClient
-import com.example.weathercompose.WeatherAppTheme
+import com.example.weathercompose.dto.WeatherTime
 
 
 class MainActivity : ComponentActivity() {
@@ -52,19 +54,64 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun fetchWeatherData(latitude: Double, longitude: Double) {
-        // Implement your weather data fetching logic here
+        binding.progressBar.visibility = View.VISIBLE
+
+        client.getForecast(latitude, longitude).enqueue(object : Callback<WeatherTime> {
+            override fun onResponse(call: Call<WeatherTime>, response: Response<WeatherTime>) {
+                binding.progressBar.visibility = View.GONE
+
+                if (response.isSuccessful) {
+                    data = response.body()
+
+                } else {
+                    binding.label.text = getString(R.string.response_error, response.code(), response.errorBody())
+                }
+            }
+
+            override fun onFailure(call: Call<WeatherTime>, t: Throwable) {
+                binding.progressBar.visibility = View.GONE
+
+                Toast.makeText(
+                    this@MainActivity, t.localizedMessage, Toast.LENGTH_SHORT
+                ).show()
+                t.printStackTrace()
+            }
+        })
     }
 
+
     private fun requestPermissionLauncher() {
-        // Implement permission launcher logic here
+        { isGranted: Boolean ->
+            if (isGranted) {
+                requestLocationUpdates()
+            } else {
+                showPermissionRationaleDialog()
+            }
+        }
     }
 
     private fun requestLocationUpdates() {
-        // Implement location updates logic here
+        if (ActivityCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            fusedLocationProviderClient.requestLocationUpdates(
+                locationRequest, locationCallback, Looper.getMainLooper()
+            )
+        }
     }
 
     private fun showPermissionRationaleDialog() {
-        // Implement permission rationale dialog logic here
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+        builder.setMessage("Niste dali dozvolu za lokaciju, ne moze aplikacija nastaviti.")
+        builder.setTitle("Upozorenje")
+        builder.setCancelable(false)
+        builder.setPositiveButton("Ok") { dialog: DialogInterface, _: Int ->
+            dialog.dismiss()
+            finish()
+        }
+        val alertDialog = builder.create()
+        alertDialog.show()
     }
 }
 
@@ -82,19 +129,17 @@ fun WeatherApp() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(it),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             BasicTextField(
-                value = latitudeState.value,
+                latitudeState.value,
                 onValueChange = { latitudeState.value = it },
-                label = { Text("Latitude") },
                 keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
             )
             BasicTextField(
                 value = longitudeState.value,
                 onValueChange = { longitudeState.value = it },
-                label = { Text("Longitude") },
                 keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
             )
             Button(
